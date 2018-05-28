@@ -4,6 +4,7 @@ import { connect } from "react-redux";
 import { t } from "c-3po";
 
 import CollectionItemsLoader from "metabase/containers/CollectionItemsLoader";
+import CandidateListLoader from "metabase/containers/CandidateListLoader";
 import { DatabaseListLoader } from "metabase/components/BrowseApp";
 
 import * as Urls from "metabase/lib/urls";
@@ -39,6 +40,26 @@ class Overworld extends React.Component {
             let pinnedDashboards = dashboards.filter(
               d => d.collection_position,
             );
+
+            if (!pinnedDashboards.length > 0) {
+              return (
+                <CandidateListLoader databaseId={1}>
+                  {({ candidates, sampleCandidates, isSample }) => {
+                    console.log(candidates, sampleCandidates);
+                    if (!candidates) {
+                      <Box>Hey?</Box>;
+                    }
+                    return (
+                      <Box>
+                        {candidates &&
+                          candidates.map(c => <Box>{c.display_name}</Box>)}
+                      </Box>
+                    );
+                  }}
+                </CandidateListLoader>
+              );
+            }
+
             return (
               <Grid w={1 / 3}>
                 {pinnedDashboards.map(pin => {
