@@ -36,6 +36,7 @@ import {
 } from "metabase/components/BrowseApp";
 
 import QueryBuilder from "metabase/query_builder/containers/QueryBuilder.jsx";
+import HistoryModal from "metabase/components/HistoryModal.jsx";
 
 import CollectionEdit from "metabase/questions/containers/CollectionEdit.jsx";
 import CollectionCreate from "metabase/questions/containers/CollectionCreate.jsx";
@@ -224,7 +225,10 @@ export const getRoutes = store => (
             />
           </Route>
         </Route>
-        <Route path="/question/:cardId" component={QueryBuilder} />
+        <Route path="/question/:cardId" component={QueryBuilder}>
+          <ModalRoute path="history" modal={HistoryModal} />
+          <ModalRoute path="move" modal={HistoryModal} />
+        </Route>
         <Route path="/question/:cardId/entity" component={EntityPage} />
 
         <Route path="/ready" component={PostSetupApp} />
