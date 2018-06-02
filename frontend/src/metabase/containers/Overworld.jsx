@@ -6,6 +6,7 @@ import { t } from "c-3po";
 import CollectionItemsLoader from "metabase/containers/CollectionItemsLoader";
 import CandidateListLoader from "metabase/containers/CandidateListLoader";
 import { DatabaseListLoader } from "metabase/components/BrowseApp";
+import ExplorePane from "metabase/components/ExplorePane";
 
 import * as Urls from "metabase/lib/urls";
 import { normal } from "metabase/lib/colors";
@@ -32,9 +33,6 @@ class Overworld extends React.Component {
         <Box my={3}>
           <Subhead>{Greeting.sayHello(this.props.user.first_name)}</Subhead>
         </Box>
-        <Box mt={3} mb={1}>
-          <h4>{t`Pinned dashboards`}</h4>
-        </Box>
         <CollectionItemsLoader collectionId="root" reload>
           {({ dashboards }) => {
             let pinnedDashboards = dashboards.filter(
@@ -45,14 +43,20 @@ class Overworld extends React.Component {
               return (
                 <CandidateListLoader databaseId={1}>
                   {({ candidates, sampleCandidates, isSample }) => {
-                    console.log(candidates, sampleCandidates);
+                    console.log(candidates);
                     if (!candidates) {
                       <Box>Hey?</Box>;
                     }
                     return (
                       <Box>
-                        {candidates &&
-                          candidates.map(c => <Box>{c.display_name}</Box>)}
+                        <ExplorePane
+                          candidates={candidates}
+                          description={
+                            isSample
+                              ? t`Once you connect your own data, I can show you some automatic explorations called x-rays. Here are some examples with sample data.`
+                              : t`I took a look at the data you just connected, and I have some explorations of interesting things I found. Hope you like them!`
+                          }
+                        />
                       </Box>
                     );
                   }}
@@ -61,42 +65,47 @@ class Overworld extends React.Component {
             }
 
             return (
-              <Grid w={1 / 3}>
-                {pinnedDashboards.map(pin => {
-                  return (
-                    <GridItem>
-                      <Link
-                        to={Urls.dashboard(pin.id)}
-                        hover={{ color: normal.blue }}
-                      >
-                        <Card hoverable p={3}>
-                          <Icon
-                            name="dashboard"
-                            color={normal.blue}
-                            mb={2}
-                            size={28}
-                          />
-                          <Box mt={1}>
-                            <h3>{pin.name}</h3>
-                          </Box>
-                        </Card>
-                      </Link>
-                    </GridItem>
-                  );
-                })}
-                <GridItem>
-                  <Link
-                    to="/collection/root"
-                    color={normal.grey2}
-                    className="text-brand-hover"
-                  >
-                    <Flex p={4} align="center">
-                      <h3>See more items</h3>
-                      <Icon name="chevronright" size={14} ml={1} />
-                    </Flex>
-                  </Link>
-                </GridItem>
-              </Grid>
+              <Box>
+                <Box mt={3} mb={1}>
+                  <h4>{t`Pinned dashboards`}</h4>
+                </Box>
+                <Grid w={1 / 3}>
+                  {pinnedDashboards.map(pin => {
+                    return (
+                      <GridItem>
+                        <Link
+                          to={Urls.dashboard(pin.id)}
+                          hover={{ color: normal.blue }}
+                        >
+                          <Card hoverable p={3}>
+                            <Icon
+                              name="dashboard"
+                              color={normal.blue}
+                              mb={2}
+                              size={28}
+                            />
+                            <Box mt={1}>
+                              <h3>{pin.name}</h3>
+                            </Box>
+                          </Card>
+                        </Link>
+                      </GridItem>
+                    );
+                  })}
+                  <GridItem>
+                    <Link
+                      to="/collection/root"
+                      color={normal.grey2}
+                      className="text-brand-hover"
+                    >
+                      <Flex p={4} align="center">
+                        <h3>See more items</h3>
+                        <Icon name="chevronright" size={14} ml={1} />
+                      </Flex>
+                    </Link>
+                  </GridItem>
+                </Grid>
+              </Box>
             );
           }}
         </CollectionItemsLoader>
