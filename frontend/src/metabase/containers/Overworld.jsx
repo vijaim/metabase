@@ -1,5 +1,5 @@
 import React from "react";
-import { Box, Flex, Subhead } from "rebass";
+import { Box, Flex, Text } from "rebass";
 import { connect } from "react-redux";
 import { t } from "c-3po";
 
@@ -18,6 +18,7 @@ import Link from "metabase/components/Link";
 
 import { getUser } from "metabase/home/selectors";
 
+import MetabotLogo from "metabase/components/MetabotLogo";
 import Greeting from "metabase/lib/greeting";
 
 const mapStateToProps = state => ({
@@ -30,9 +31,13 @@ class Overworld extends React.Component {
   render() {
     return (
       <Box px={4}>
-        <Box my={3}>
-          <Subhead>{Greeting.sayHello(this.props.user.first_name)}</Subhead>
-        </Box>
+        <Flex my={3} align='center'>
+          <MetabotLogo />
+          <Box ml={2}>
+            <h3>{Greeting.sayHello(this.props.user.first_name)}</h3>
+            <Text>{t`Don't tell anyone but you're my favorite`}</Text>
+          </Box>
+        </Flex>
         <CollectionItemsLoader collectionId="root" reload>
           {({ dashboards }) => {
             let pinnedDashboards = dashboards.filter(
@@ -43,21 +48,17 @@ class Overworld extends React.Component {
               return (
                 <CandidateListLoader databaseId={1}>
                   {({ candidates, sampleCandidates, isSample }) => {
-                    console.log(candidates);
                     if (!candidates) {
                       <Box>Hey?</Box>;
                     }
                     return (
-                      <Box>
-                        <ExplorePane
-                          candidates={candidates}
-                          description={
-                            isSample
-                              ? t`Once you connect your own data, I can show you some automatic explorations called x-rays. Here are some examples with sample data.`
-                              : t`I took a look at the data you just connected, and I have some explorations of interesting things I found. Hope you like them!`
-                          }
-                        />
-                      </Box>
+                      <ExplorePane
+                        candidates={candidates}
+                        withMetabot={false}
+                        title=""
+                        gridColumns={1 / 3}
+                        asCards={true}
+                      />
                     );
                   }}
                 </CandidateListLoader>
