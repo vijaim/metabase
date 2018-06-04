@@ -3,6 +3,7 @@ import { Box, Flex, Subhead, Truncate } from "rebass";
 import { t } from "c-3po";
 import { connect } from "react-redux";
 import { withRouter } from "react-router";
+import listSelect from "metabase/hoc/ListSelect";
 
 import Question from "metabase/entities/questions";
 import Dashboard from "metabase/entities/dashboards";
@@ -83,6 +84,7 @@ const CollectionList = () => {
 };
 
 @withRouter
+@listSelect()
 @connect(() => ({}), mapDispatchToProps)
 class DefaultLanding extends React.Component {
   state = {
@@ -143,7 +145,7 @@ class DefaultLanding extends React.Component {
   }
 
   render() {
-    const { collectionId, location } = this.props;
+    const { collectionId, location, selected, onToggleSelected, selection } = this.props;
 
     // Show the
     const showCollectionList = collectionId === "root";
@@ -269,6 +271,8 @@ class DefaultLanding extends React.Component {
                                     ? this._pinItem.bind(this)
                                     : null
                                 }
+                                selected={selection.has(item)}
+                                onToggleSelected={() => onToggleSelected(item) }
                               />
                             </Link>
                           </Box>
