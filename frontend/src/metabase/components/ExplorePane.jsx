@@ -7,7 +7,7 @@ import Icon from "metabase/components/Icon";
 import MetabotLogo from "metabase/components/MetabotLogo";
 import Select, { Option } from "metabase/components/Select";
 import { Grid, GridItem } from "metabase/components/Grid";
-import Card from "metabase/components/Card"
+import Card from "metabase/components/Card";
 
 import { t } from "c-3po";
 import _ from "underscore";
@@ -23,7 +23,7 @@ type Props = {
   description?: ?string,
   withMetabot: ?boolean,
   gridColumns: ?number,
-  asCards: ?boolean
+  asCards: ?boolean,
 };
 
 type State = {
@@ -43,12 +43,19 @@ export class ExplorePane extends React.Component {
     title: DEFAULT_TITLE,
     description: DEFAULT_DESCRIPTION,
     withMetabot: true,
-    gridColumns: 1/2,
-    asCards: false
+    gridColumns: 1 / 2,
+    asCards: false,
   };
 
   render() {
-    let { candidates, title, description, withMetabot, gridColumns, asCards } = this.props;
+    let {
+      candidates,
+      title,
+      description,
+      withMetabot,
+      gridColumns,
+      asCards,
+    } = this.props;
     let { schemaName, visibleItems } = this.state;
 
     let schemaNames;
@@ -67,7 +74,7 @@ export class ExplorePane extends React.Component {
       <div className="pt4 pb2">
         {title && (
           <div className="flex align-center mb2">
-            { withMetabot && <MetabotLogo /> }
+            {withMetabot && <MetabotLogo />}
             <h3 className="ml2">
               <span className="block" style={{ marginTop: 8 }}>
                 {title}
@@ -104,7 +111,11 @@ export class ExplorePane extends React.Component {
             </div>
           )}
         {tables && (
-          <ExploreList candidates={tables} gridColumns={gridColumns} asCards={asCards} />
+          <ExploreList
+            candidates={tables}
+            gridColumns={gridColumns}
+            asCards={asCards}
+          />
         )}
         {hasMore && (
           <div
@@ -119,17 +130,24 @@ export class ExplorePane extends React.Component {
   }
 }
 
-export const ExploreList = ({ candidates, gridColumns, asCards }: { candidates: Candidate[] }) => (
+export const ExploreList = ({
+  candidates,
+  gridColumns,
+  asCards,
+}: {
+  candidates: Candidate[],
+}) => (
   <Grid>
     {candidates &&
       candidates.map((option, index) => (
         <GridItem w={gridColumns} key={index}>
-          { asCards ?
+          {asCards ? (
             <Card hoverable p={2}>
               <ExploreOption option={option} />
             </Card>
-            : <ExploreOption option={option} />
-          }
+          ) : (
+            <ExploreOption option={option} />
+          )}
         </GridItem>
       ))}
   </Grid>

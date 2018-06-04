@@ -31,7 +31,7 @@ class Overworld extends React.Component {
   render() {
     return (
       <Box px={4}>
-        <Flex my={3} align='center'>
+        <Flex my={3} align="center">
           <MetabotLogo />
           <Box ml={2}>
             <h3>{Greeting.sayHello(this.props.user.first_name)}</h3>
