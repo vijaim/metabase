@@ -136,6 +136,8 @@ export const ExploreList = ({
   asCards,
 }: {
   candidates: Candidate[],
+  gridColumns: ?number,
+  asCards: ?boolean,
 }) => (
   <Grid>
     {candidates &&
