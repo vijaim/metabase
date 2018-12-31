@@ -1,5 +1,5 @@
 import React, { Component } from "react";
-import { Box, Flex } from "rebass";
+import { Box, Flex } from "grid-styled";
 import { Link } from "react-router";
 
 import { PageSidebar, Wrapper, PageLayout } from "./EntityLayout";
@@ -12,6 +12,8 @@ import Visualization from "metabase/visualizations/components/Visualization";
 import QuestionAndResultLoader from "metabase/containers/QuestionAndResultLoader";
 
 import RelatedItems from "metabase/components/RelatedItems";
+
+import colors from "metabase/lib/colors";
 
 class EntityPage extends Component {
   render() {
@@ -32,7 +34,7 @@ class EntityPage extends Component {
             <div key="entity">
               <Box
                 className="border-bottom hover-parent hover--visibility relative"
-                style={{ backgroundColor: "#FCFDFD", height: "65vh" }}
+                style={{ backgroundColor: colors["bg-white"], height: "65vh" }}
               >
                 <Box className="hover-child absolute top right">
                   {!loading && (
@@ -65,7 +67,10 @@ class EntityPage extends Component {
                       <Box
                         p={2}
                         mt={4}
-                        style={{ border: "1px solid #ddd", borderRadius: 6 }}
+                        style={{
+                          border: `1px solid ${colors["border"]}`,
+                          borderRadius: 6,
+                        }}
                       >
                         <Box>
                           <h3>Ways to view this</h3>

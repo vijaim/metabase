@@ -1,5 +1,8 @@
 import React from "react";
-import { Box, Border, Flex, Subhead, Heading } from "rebass";
+import { Box, Flex } from "grid-styled";
+import Subhead from "metabase/components/Subhead";
+
+import colors from "metabase/lib/colors";
 
 export const Wrapper = ({ children }) => (
   <Box w="80%" ml="auto" mr="auto">
@@ -9,11 +12,11 @@ export const Wrapper = ({ children }) => (
 
 export const Canvas = ({ children }) => (
   <Box
-    bg="#FCFDFD"
+    bg={colors["bg-white"]}
     p={2}
     style={{
-      borderTop: "#F4F5F6",
-      borderBottom: "#F5F5F6",
+      borderTop: colors["border"],
+      borderBottom: colors["border"],
     }}
   >
     {children}
@@ -23,17 +26,17 @@ export const Canvas = ({ children }) => (
 export const Section = ({ children }) => <Box py={4}>{children}</Box>;
 
 export const SectionHeading = ({ children }) => (
-  <Border bottom mb={3} pb={2}>
+  <Box bottom mb={3} pb={2}>
     <Flex align="center">
       <Subhead>{children}</Subhead>
     </Flex>
-  </Border>
+  </Box>
 );
 
 export const PageHeading = ({ icon, title }) => (
   <Flex align="center" my={3}>
     {icon}
-    <Heading ml={2}>{title}</Heading>
+    <h1 ml={2}>{title}</h1>
   </Flex>
 );
 

@@ -4,12 +4,15 @@
             [clojure.string :as str]
             [clojure.tools.logging :as log]
             [metabase.automagic-dashboards.populate :as populate]
+            [metabase.query-processor.util :as qp.util]
             [metabase.util :as u]
-            [metabase.util.schema :as su]
-            [puppetlabs.i18n.core :as i18n :refer [trs]]
+            [metabase.util
+             [i18n :refer [trs tru LocalizedString]]
+             [schema :as su]]
             [schema
              [coerce :as sc]
              [core :as s]]
+            [schema.spec.core :as spec]
             [yaml.core :as yaml])
   (:import [java.nio.file Files FileSystem FileSystems Path]))
 
@@ -18,7 +21,7 @@
   100)
 
 (def ^:private Score (s/constrained s/Int #(<= 0 % max-score)
-                                    (format (trs "0 <= score <= %s") max-score)))
+                                    (trs "0 <= score <= {0}" max-score)))
 
 (def ^:private MBQL [s/Any])
 
@@ -26,7 +29,7 @@
 
 (def ^:private Metric {Identifier {(s/required-key :metric) MBQL
                                    (s/required-key :score)  Score
-                                   (s/optional-key :name)   s/Str}})
+                                   (s/optional-key :name)   LocalizedString}})
 
 (def ^:private Filter {Identifier {(s/required-key :filter) MBQL
                                    (s/required-key :score)  Score}})
@@ -79,34 +82,34 @@
 (def ^:private Visualization [(s/one s/Str "visualization") su/Map])
 
 (def ^:private Width  (s/constrained s/Int #(<= 1 % populate/grid-width)
-                                     (format (trs "1 <= width <= %s")
-                                             populate/grid-width)))
+                                     (trs "1 <= width <= {0}" populate/grid-width)))
 (def ^:private Height (s/constrained s/Int pos?))
 
 (def ^:private CardDimension {Identifier {(s/optional-key :aggregation) s/Str}})
 
 (def ^:private Card
-  {Identifier {(s/required-key :title)         s/Str
+  {Identifier {(s/required-key :title)         LocalizedString
                (s/required-key :score)         Score
                (s/optional-key :visualization) Visualization
-               (s/optional-key :text)          s/Str
+               (s/optional-key :text)          LocalizedString
                (s/optional-key :dimensions)    [CardDimension]
                (s/optional-key :filters)       [s/Str]
                (s/optional-key :metrics)       [s/Str]
                (s/optional-key :limit)         su/IntGreaterThanZero
                (s/optional-key :order_by)      [OrderByPair]
-               (s/optional-key :description)   s/Str
+               (s/optional-key :description)   LocalizedString
                (s/optional-key :query)         s/Str
                (s/optional-key :width)         Width
                (s/optional-key :height)        Height
                (s/optional-key :group)         s/Str
-               (s/optional-key :y_label)       s/Str
-               (s/optional-key :x_label)       s/Str
-               (s/optional-key :series_labels) [s/Str]}})
+               (s/optional-key :y_label)       LocalizedString
+               (s/optional-key :x_label)       LocalizedString
+               (s/optional-key :series_labels) [LocalizedString]}})
 
 (def ^:private Groups
-  {Identifier {(s/required-key :title)       s/Str
-               (s/optional-key :description) s/Str}})
+  {Identifier {(s/required-key :title)            LocalizedString
+               (s/optional-key :comparison_title) LocalizedString
+               (s/optional-key :description)      LocalizedString}})
 
 (def ^{:arglists '([definition])} identifier
   "Return `key` in `{key {}}`."
@@ -120,8 +123,7 @@
   (mapcat (comp k val first) cards))
 
 (def ^:private DimensionForm
-  [(s/one (s/constrained (s/cond-pre s/Str s/Keyword)
-                         (comp #{"dimension"} str/lower-case name))
+  [(s/one (s/constrained (s/cond-pre s/Str s/Keyword) (comp #{:dimension} qp.util/normalize-token))
           "dimension")
    (s/one s/Str "identifier")
    su/Map])
@@ -140,8 +142,7 @@
                    (dimension-form? subform) [(second subform)]
                    (string? subform)         (->> subform
                                                   (re-seq #"\[\[(\w+)\]\]")
-                                                  (map second))
-                   :else                     nil)))
+                                                  (map second)))))
        distinct))
 
 (defn- valid-metrics-references?
@@ -188,14 +189,14 @@
 (def Rule
   "Rules defining an automagic dashboard."
   (constrained-all
-   {(s/required-key :title)             s/Str
-    (s/required-key :dimensions)        [Dimension]
-    (s/required-key :cards)             [Card]
+   {(s/required-key :title)             LocalizedString
     (s/required-key :rule)              s/Str
+    (s/required-key :specificity)       s/Int
+    (s/optional-key :cards)             [Card]
+    (s/optional-key :dimensions)        [Dimension]
     (s/optional-key :applies_to)        AppliesTo
-    (s/optional-key :transient_title)   s/Str
-    (s/optional-key :short_title)       s/Str
-    (s/optional-key :description)       s/Str
+    (s/optional-key :transient_title)   LocalizedString
+    (s/optional-key :description)       LocalizedString
     (s/optional-key :metrics)           [Metric]
     (s/optional-key :filters)           [Filter]
     (s/optional-key :groups)            Groups
@@ -272,12 +273,17 @@
                           [(->entity table-type) (->type field-type)]
                           [(if (-> table-type ->entity table-type?)
                              (->entity table-type)
-                             (->type table-type))])))}))
+                             (->type table-type))])))
+    LocalizedString #(tru %)}))
 
 (def ^:private rules-dir "automagic_dashboards/")
 
 (def ^:private ^{:arglists '([f])} file->entity-type
   (comp (partial re-find #".+(?=\.yaml$)") str (memfn ^Path getFileName)))
+
+(defn- specificity
+  [rule]
+  (transduce (map (comp count ancestors)) + (:applies_to rule)))
 
 (defn- load-rule
   [^Path f]
@@ -287,17 +293,19 @@
           .toUri
           slurp
           yaml/parse-string
-          (assoc :rule entity-type)
+          (assoc :rule        entity-type
+                 :specificity 0)
           (update :applies_to #(or % entity-type))
-          rules-validator))
+          rules-validator
+          (as-> rule (assoc rule :specificity (specificity rule)))))
     (catch Exception e
-      (log/errorf (trs "Error parsing %s:\n%s")
-                  (.getFileName f)
-                  (or (some-> e
-                              ex-data
-                              (select-keys [:error :value])
-                              u/pprint-to-str)
-                      e))
+      (log/error (trs "Error parsing {0}:\n{1}"
+                      (.getFileName f)
+                      (or (some-> e
+                                  ex-data
+                                  (select-keys [:error :value])
+                                  u/pprint-to-str)
+                          e)))
       nil)))
 
 (defn- trim-trailing-slash
@@ -352,3 +360,48 @@
   "Get rule at path `path`."
   [path]
   (get-in @rules (concat path [::leaf])))
+
+(defn- extract-localized-strings
+  [[path rule]]
+  (let [strings (atom [])]
+    ((spec/run-checker
+      (fn [s params]
+        (let [walk (spec/checker (s/spec s) params)]
+          (fn [x]
+            (when (= LocalizedString s)
+              (swap! strings conj x))
+            (walk x))))
+      false
+      Rule)
+     rule)
+    (map vector (distinct @strings) (repeat path))))
+
+(defn- make-pot
+  [strings]
+  (->> strings
+       (group-by first)
+       (mapcat (fn [[s ctxs]]
+                 (concat (for [[_ ctx] ctxs]
+                           (format "#: resources/%s%s.yaml" rules-dir (str/join "/" ctx)))
+                         [(format "msgid \"%s\"\nmsgstr \"\"\n" s)])))
+       (str/join "\n")))
+
+(defn- all-rules
+  ([]
+   (all-rules [] @rules))
+  ([path rules]
+   (when (map? rules)
+     (mapcat (fn [[k v]]
+               (if (= k ::leaf)
+                 [[path v]]
+                 (all-rules (conj path k) v)))
+             rules))))
+
+(defn -main
+  "Entry point for lein task `generate-automagic-dashboards-pot`"
+  [& _]
+  (->> (all-rules)
+       (mapcat extract-localized-strings)
+       make-pot
+       (spit "locales/metabase-automatic-dashboards.pot"))
+  (System/exit 0))

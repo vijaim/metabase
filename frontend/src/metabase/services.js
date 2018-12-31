@@ -74,7 +74,6 @@ export const CollectionsApi = {
   // Temporary route for getting things not in a collection
   getRoot: GET("/api/collection/root"),
   update: PUT("/api/collection/:id"),
-  delete: DELETE("/api/collection/:id"),
   graph: GET("/api/collection/graph"),
   updateGraph: PUT("/api/collection/graph"),
 };
@@ -258,6 +257,7 @@ export const SessionApi = {
 export const SettingsApi = {
   list: GET("/api/setting"),
   put: PUT("/api/setting/:key"),
+  putAll: PUT("/api/setting"),
   // setAll:                      PUT("/api/setting"),
   // delete:                   DELETE("/api/setting/:key"),
 };
@@ -310,6 +310,10 @@ export const GeoJSONApi = {
 
 export const I18NApi = {
   locale: GET("/app/locales/:locale.json"),
+};
+
+export const TaskApi = {
+  get: GET("api/task"),
 };
 
 export function setPublicQuestionEndpoints(uuid: string) {

@@ -1,398 +1,758 @@
 import React from "react";
-import { Box, Flex, Subhead, Truncate } from "rebass";
-import { t } from "c-3po";
+import { Box, Flex } from "grid-styled";
+import { t, msgid, ngettext } from "c-3po";
 import { connect } from "react-redux";
 import { withRouter } from "react-router";
+import _ from "underscore";
+import cx from "classnames";
+import { dissoc } from "icepick";
 
-import Question from "metabase/entities/questions";
-import Dashboard from "metabase/entities/dashboards";
+import withToast from "metabase/hoc/Toast";
+
+import listSelect from "metabase/hoc/ListSelect";
+import BulkActionBar from "metabase/components/BulkActionBar";
 
 import * as Urls from "metabase/lib/urls";
-import { normal } from "metabase/lib/colors";
+import colors, { normal } from "metabase/lib/colors";
 
+import Button from "metabase/components/Button";
 import Card from "metabase/components/Card";
+import Modal from "metabase/components/Modal";
+import StackedCheckBox from "metabase/components/StackedCheckBox";
 import EntityItem from "metabase/components/EntityItem";
 import { Grid, GridItem } from "metabase/components/Grid";
-import Icon from "metabase/components/Icon";
+import Icon, { IconWrapper } from "metabase/components/Icon";
 import Link from "metabase/components/Link";
-import CollectionEmptyState from "metabase/components/CollectionEmptyState";
 import EntityMenu from "metabase/components/EntityMenu";
+import VirtualizedList from "metabase/components/VirtualizedList";
+import BrowserCrumbs from "metabase/components/BrowserCrumbs";
+import ItemTypeFilterBar from "metabase/components/ItemTypeFilterBar";
+import CollectionEmptyState from "metabase/components/CollectionEmptyState";
 
-import CollectionListLoader from "metabase/containers/CollectionListLoader";
-import CollectionItemsLoader from "metabase/containers/CollectionItemsLoader";
+import Tooltip from "metabase/components/Tooltip";
 
-import Collections from "metabase/entities/collections";
+import CollectionMoveModal from "metabase/containers/CollectionMoveModal";
+import EntityCopyModal from "metabase/entities/containers/EntityCopyModal";
+import { entityObjectLoader } from "metabase/entities/containers/EntityObjectLoader";
+import { entityTypeForObject } from "metabase/schema";
 
-// TODO - this should be a selector
-const mapStateToProps = (state, props) => ({
-  currentCollection:
-    Collections.selectors.getObject(state, {
-      entityId: props.params.collectionId,
-    }) || {},
-});
+import CollectionList from "metabase/components/CollectionList";
 
-const mapDispatchToProps = {
-  updateQuestion: Question.actions.update,
-  updateDashboard: Dashboard.actions.update,
-};
+import { getUserIsAdmin } from "metabase/selectors/user";
 
-const CollectionItem = ({ collection }) => (
-  <Link
-    to={`collection/${collection.id}`}
-    hover={{ color: normal.blue }}
-    color={normal.grey2}
-  >
-    <Flex
-      align="center"
-      my={1}
-      px={1}
-      py={1}
-      key={`collection-${collection.id}`}
-    >
-      <Icon name="all" mx={1} />
-      <h4>
-        <Truncate>{collection.name}</Truncate>
-      </h4>
-    </Flex>
-  </Link>
+// drag-and-drop components
+import ItemDragSource from "metabase/containers/dnd/ItemDragSource";
+import CollectionDropTarget from "metabase/containers/dnd/CollectionDropTarget";
+import PinPositionDropTarget from "metabase/containers/dnd/PinPositionDropTarget";
+import PinDropTarget from "metabase/containers/dnd/PinDropTarget";
+import ItemsDragLayer from "metabase/containers/dnd/ItemsDragLayer";
+
+import EmptyState from "metabase/components/EmptyState";
+
+const ROW_HEIGHT = 72;
+const PAGE_PADDING = [2, 3, 4];
+
+const ANALYTICS_CONTEXT = "Collection Landing";
+
+const EmptyStateWrapper = ({ children }) => (
+  <Box p={5} w={1} h={"200px"}>
+    {children}
+  </Box>
 );
 
-const CollectionList = () => {
-  return (
-    <Box mb={2}>
-      <CollectionListLoader
-        // NOTE: preferably we wouldn't need to reload each time the page is shown
-        // but until we port everything to the Collections entity it will be difficult
-        // to ensure it's up to date
-        reload
-      >
-        {({ collections }) => {
-          return (
-            <Box>
-              {collections.map(collection => (
-                <Box key={collection.id} mb={1}>
-                  <CollectionItem collection={collection} />
-                </Box>
-              ))}
-            </Box>
-          );
-        }}
-      </CollectionListLoader>
-    </Box>
-  );
+const DashboardEmptyState = () => (
+  <EmptyStateWrapper>
+    <EmptyState
+      message={t`Dashboards let you collect and share data in one place.`}
+      illustrationElement={<Icon name="dashboard" size={32} />}
+    />
+  </EmptyStateWrapper>
+);
+
+const PulseEmptyState = () => (
+  <EmptyStateWrapper>
+    <EmptyState
+      message={t`Pulses let you send out the latest data to your team on a schedule via email or slack.`}
+      illustrationElement={<Icon name="pulse" size={32} />}
+    />
+  </EmptyStateWrapper>
+);
+
+const QuestionEmptyState = () => (
+  <EmptyStateWrapper>
+    <EmptyState
+      message={t`Questions are a saved look at your data.`}
+      illustrationElement={<Icon name="beaker" size={32} />}
+    />
+  </EmptyStateWrapper>
+);
+
+const EMPTY_STATES = {
+  dashboard: <DashboardEmptyState />,
+  pulse: <PulseEmptyState />,
+  card: <QuestionEmptyState />,
 };
 
+import { entityListLoader } from "metabase/entities/containers/EntityListLoader";
+
+@entityListLoader({
+  entityType: "search",
+  entityQuery: (state, props) => ({ collection: props.collectionId }),
+  wrapped: true,
+})
+@connect((state, props) => {
+  // split out collections, pinned, and unpinned since bulk actions only apply to unpinned
+  const [collections, items] = _.partition(
+    props.list,
+    item => item.model === "collection",
+  );
+  const [pinned, unpinned] = _.partition(
+    items,
+    item => item.collection_position != null,
+  );
+  // sort the pinned items by collection_position
+  pinned.sort((a, b) => a.collection_position - b.collection_position);
+  return {
+    collections,
+    pinned,
+    unpinned,
+    isAdmin: getUserIsAdmin(state),
+  };
+})
+// only apply bulk actions to unpinned items
+@listSelect({
+  listProp: "unpinned",
+  keyForItem: item => `${item.model}:${item.id}`,
+})
 @withRouter
-@connect(() => ({}), mapDispatchToProps)
 class DefaultLanding extends React.Component {
   state = {
-    reload: false,
+    selectedItems: null,
+    selectedAction: null,
   };
 
-  _getItemProps(item) {
-    switch (item.type) {
-      case "card":
-        return {
-          url: Urls.question(item.id),
-          iconName: "beaker",
-          iconColor: "#93B3C9",
-        };
-      case "dashboard":
-        return {
-          url: Urls.dashboard(item.id),
-          iconName: "dashboard",
-          iconColor: normal.blue,
-        };
-      case "pulse":
-        return {
-          url: Urls.pulseEdit(item.id),
-          iconName: "pulse",
-          iconColor: normal.yellow,
-        };
+  handleBulkArchive = async () => {
+    try {
+      await Promise.all(
+        this.props.selected.map(item => item.setArchived(true)),
+      );
+    } finally {
+      this.handleBulkActionSuccess();
     }
-  }
-  _reload() {
-    this.setState({ reload: true });
-    setTimeout(() => this.setState({ relaod: false }), 2000);
-  }
-  async _pinItem({ id, type, collection_position }) {
-    const { updateQuestion, updateDashboard } = this.props;
-    switch (type) {
-      case "card":
-        // hack in 1 as the collection position just to be able to get "pins"
-        await updateQuestion({ id, collection_position: 1 });
-        break;
-      case "dashboard":
-        await updateDashboard({ id, collection_position: 1 });
-        break;
-    }
-    this._reload();
-  }
+  };
 
-  async _unPinItem({ id, type, collection_position }) {
-    const { updateQuestion, updateDashboard } = this.props;
-    switch (type) {
-      case "card":
-        await updateQuestion({ id, collection_position: null });
-        break;
-      case "dashboard":
-        await updateDashboard({ id, collection_position: null });
-        break;
+  handleBulkMoveStart = () => {
+    this.setState({
+      selectedItems: this.props.selected,
+      selectedAction: "move",
+    });
+  };
+
+  handleBulkMove = async collection => {
+    try {
+      await Promise.all(
+        this.state.selectedItems.map(item => item.setCollection(collection)),
+      );
+      this.setState({ selectedItems: null, selectedAction: null });
+    } finally {
+      this.handleBulkActionSuccess();
     }
-    this._reload();
-  }
+  };
+
+  handleBulkActionSuccess = () => {
+    // Clear the selection in listSelect
+    // Fixes an issue where things were staying selected when moving between
+    // different collection pages
+    this.props.onSelectNone();
+  };
 
   render() {
-    const { collectionId, location } = this.props;
+    const {
+      ancestors,
+      collection,
+      collectionId,
 
-    // Show the
-    const showCollectionList = collectionId === "root";
+      collections,
+      pinned,
+      unpinned,
 
+      isAdmin,
+      isRoot,
+      selected,
+      selection,
+      onToggleSelected,
+      location,
+    } = this.props;
+    const { selectedItems, selectedAction } = this.state;
+
+    const collectionWidth = unpinned.length > 0 ? [1, 1 / 3] : 1;
+    const itemWidth = unpinned.length > 0 ? [1, 2 / 3] : 0;
+    const collectionGridSize = unpinned.length > 0 ? 1 : [1, 1 / 4];
+
+    let unpinnedItems = unpinned;
+
+    if (location.query.type) {
+      unpinnedItems = unpinned.filter(u => u.model === location.query.type);
+    }
+
+    const collectionIsEmpty =
+      !unpinned.length > 0 && !collections.length > 0 && !pinned.length > 0;
+    const collectionHasPins = pinned.length > 0;
+    const collectionHasItems = unpinned.length > 0;
+
+    const showSidebar =
+      // if the user has write permissions or if there are collections then show the sidebar
+      (collection.can_write || collections.length > 0) &&
+      // there should also be at least one item, otherwise we have a different
+      // new collection CTA
+      !collectionIsEmpty;
     return (
-      <Flex>
-        {showCollectionList && (
-          <Box w={1 / 3} mr={3}>
+      <Box>
+        <Box>
+          <Flex
+            align="center"
+            pt={2}
+            pb={3}
+            px={4}
+            bg={pinned.length ? colors["bg-medium"] : null}
+          >
             <Box>
-              <h4>{t`Collections`}</h4>
+              <Box mb={1}>
+                <BrowserCrumbs
+                  analyticsContext={ANALYTICS_CONTEXT}
+                  crumbs={[
+                    ...ancestors.map(ancestor => ({
+                      title: (
+                        <CollectionDropTarget collection={ancestor} margin={8}>
+                          {ancestor.name}
+                        </CollectionDropTarget>
+                      ),
+                      to: Urls.collection(ancestor.id),
+                    })),
+                  ]}
+                />
+              </Box>
+              <Flex align="center">
+                <h1 style={{ fontWeight: 900 }}>{collection.name}</h1>
+                {collection.description && (
+                  <Tooltip tooltip={collection.description}>
+                    <Icon
+                      name="info"
+                      ml={1}
+                      mt="4px"
+                      color={colors["bg-dark"]}
+                      hover={{ color: colors["brand"] }}
+                    />
+                  </Tooltip>
+                )}
+              </Flex>
             </Box>
-            <CollectionList />
-          </Box>
-        )}
-        <Box w={2 / 3}>
+
+            <Flex ml="auto">
+              {isAdmin &&
+                !collection.personal_owner_id && (
+                  <Tooltip
+                    tooltip={t`Edit the permissions for this collection`}
+                  >
+                    <Link
+                      to={Urls.collectionPermissions(this.props.collectionId)}
+                    >
+                      <IconWrapper>
+                        <Icon name="lock" />
+                      </IconWrapper>
+                    </Link>
+                  </Tooltip>
+                )}
+              {collection &&
+                collection.can_write &&
+                !collection.personal_owner_id && (
+                  <CollectionEditMenu
+                    collectionId={collectionId}
+                    isAdmin={isAdmin}
+                    isRoot={isRoot}
+                  />
+                )}
+              <Box ml={1}>
+                <CollectionBurgerMenu />
+              </Box>
+            </Flex>
+          </Flex>
           <Box>
-            <CollectionItemsLoader reload collectionId={collectionId || "root"}>
-              {({ collection, allItems, pulses, cards, dashboards, empty }) => {
-                let items = allItems;
-
-                if (!items.length) {
-                  return <CollectionEmptyState />;
-                }
-
-                // Hack in filtering
-                if (location.query.show) {
-                  switch (location.query.show) {
-                    case "dashboards":
-                      items = dashboards.map(d => ({
-                        ...d,
-                        type: "dashboard",
-                      }));
-                      break;
-                    case "pulses":
-                      items = pulses.map(p => ({ ...p, type: "pulse" }));
-                      break;
-                    case "questions":
-                      items = cards.map(c => ({ ...c, type: "card" }));
-                      break;
-                    default:
-                      items = allItems;
-                      break;
-                  }
-                }
-
-                const pinned = items.filter(i => i.collection_position);
-                const other = items.filter(i => !i.collection_position);
-
-                return (
-                  <Box>
-                    <Box mb={2}>
-                      {pinned.length > 0 && (
-                        <Box mb={2}>
-                          <h4>{t`Pinned items`}</h4>
-                        </Box>
+            <Box>
+              {collectionHasPins ? (
+                <Box px={PAGE_PADDING} pt={2} pb={3} bg={colors["bg-medium"]}>
+                  <CollectionSectionHeading>{t`Pins`}</CollectionSectionHeading>
+                  <PinDropTarget
+                    pinIndex={pinned[pinned.length - 1].collection_position + 1}
+                    noDrop
+                    marginLeft={8}
+                    marginRight={8}
+                  >
+                    <Grid>
+                      {pinned.map((item, index) => (
+                        <GridItem
+                          w={[1, 1 / 3]}
+                          className="relative"
+                          key={index}
+                        >
+                          <ItemDragSource item={item} collection={collection}>
+                            <PinnedItem
+                              key={`${item.model}:${item.id}`}
+                              index={index}
+                              item={item}
+                              collection={collection}
+                            />
+                            <PinPositionDropTarget
+                              pinIndex={item.collection_position}
+                              left
+                            />
+                            <PinPositionDropTarget
+                              pinIndex={item.collection_position + 1}
+                              right
+                            />
+                          </ItemDragSource>
+                        </GridItem>
+                      ))}
+                      {pinned.length % 2 === 1 ? (
+                        <GridItem w={1 / 4} className="relative">
+                          <PinPositionDropTarget
+                            pinIndex={
+                              pinned[pinned.length - 1].collection_position + 1
+                            }
+                          />
+                        </GridItem>
+                      ) : null}
+                    </Grid>
+                  </PinDropTarget>
+                </Box>
+              ) : (
+                <PinDropTarget pinIndex={1} hideUntilDrag>
+                  {({ hovered }) => (
+                    <div
+                      className={cx(
+                        "p2 flex layout-centered",
+                        hovered ? "text-brand" : "text-light",
                       )}
-                      <Grid>
-                        {pinned.map(item => {
-                          // TODO - move this over to use item fns like getUrl()
-                          const {
-                            url,
-                            iconName,
-                            iconColor,
-                          } = this._getItemProps(item);
-                          return (
-                            <GridItem w={1 / 2}>
-                              <Link
-                                to={url}
-                                className="hover-parent hover--visibility"
-                                hover={{ color: normal.blue }}
+                    >
+                      <Icon name="pin" mr={1} />
+                      {t`Drag something here to pin it to the top`}
+                    </div>
+                  )}
+                </PinDropTarget>
+              )}
+              <Box pt={[1, 2]} px={[2, 4]}>
+                <Grid>
+                  {showSidebar && (
+                    <GridItem w={collectionWidth}>
+                      <Box pr={2} className="relative">
+                        <Box py={2}>
+                          <CollectionSectionHeading>
+                            {t`Collections`}
+                          </CollectionSectionHeading>
+                        </Box>
+                        <CollectionList
+                          analyticsContext={ANALYTICS_CONTEXT}
+                          currentCollection={collection}
+                          collections={collections}
+                          isRoot={collectionId === "root"}
+                          w={collectionGridSize}
+                        />
+                      </Box>
+                    </GridItem>
+                  )}
+                  {collectionHasItems && (
+                    <GridItem w={itemWidth}>
+                      <Box>
+                        <ItemTypeFilterBar
+                          analyticsContext={ANALYTICS_CONTEXT}
+                        />
+                        <Card mt={1} className="relative">
+                          {unpinnedItems.length > 0 ? (
+                            <PinDropTarget pinIndex={null} margin={8}>
+                              <Box
+                                style={{
+                                  position: "relative",
+                                  height: ROW_HEIGHT * unpinnedItems.length,
+                                }}
                               >
-                                <Card hoverable p={3}>
-                                  <Icon
-                                    name={iconName}
-                                    color={iconColor}
-                                    size={28}
-                                    mb={2}
-                                  />
-                                  <Flex align="center">
-                                    <h3>{item.name}</h3>
-                                    {collection.can_write && (
-                                      <Box
-                                        ml="auto"
-                                        className="hover-child"
-                                        onClick={ev => {
-                                          ev.preventDefault();
-                                          this._unPinItem(item);
-                                        }}
+                                <VirtualizedList
+                                  items={unpinnedItems}
+                                  rowHeight={ROW_HEIGHT}
+                                  renderItem={({ item, index }) => (
+                                    <Box className="relative">
+                                      <ItemDragSource
+                                        item={item}
+                                        selection={selection}
+                                        collection={collection}
                                       >
-                                        <Icon name="pin" />
-                                      </Box>
+                                        <NormalItem
+                                          key={`${item.model}:${item.id}`}
+                                          item={item}
+                                          collection={collection}
+                                          selection={selection}
+                                          onToggleSelected={onToggleSelected}
+                                          onMove={selectedItems =>
+                                            this.setState({
+                                              selectedItems,
+                                              selectedAction: "move",
+                                            })
+                                          }
+                                          onCopy={selectedItems =>
+                                            this.setState({
+                                              selectedItems,
+                                              selectedAction: "copy",
+                                            })
+                                          }
+                                        />
+                                      </ItemDragSource>
+                                    </Box>
+                                  )}
+                                />
+                              </Box>
+                            </PinDropTarget>
+                          ) : (
+                            <Box>
+                              {location.query.type &&
+                                EMPTY_STATES[location.query.type]}
+                              <PinDropTarget
+                                pinIndex={null}
+                                hideUntilDrag
+                                margin={10}
+                              >
+                                {({ hovered }) => (
+                                  <div
+                                    className={cx(
+                                      "m2 flex layout-centered",
+                                      hovered ? "text-brand" : "text-light",
                                     )}
-                                  </Flex>
-                                </Card>
-                              </Link>
-                            </GridItem>
-                          );
-                        })}
-                      </Grid>
-                    </Box>
-                    <Flex align="center" mb={2}>
-                      {pinned.length > 0 && (
-                        <Box>
-                          <h4>{t`Saved here`}</h4>
-                        </Box>
-                      )}
+                                  >
+                                    {t`Drag here to un-pin`}
+                                  </div>
+                                )}
+                              </PinDropTarget>
+                            </Box>
+                          )}
+                        </Card>
+                      </Box>
+                    </GridItem>
+                  )}
+                </Grid>
+                {unpinned.length === 0 && (
+                  <PinDropTarget pinIndex={null} hideUntilDrag margin={10}>
+                    {({ hovered }) => (
+                      <Flex
+                        align="center"
+                        justify="center"
+                        py={2}
+                        m={2}
+                        color={
+                          hovered ? colors["brand"] : colors["text-medium"]
+                        }
+                      >
+                        {t`Drag here to un-pin`}
+                      </Flex>
+                    )}
+                  </PinDropTarget>
+                )}
+
+                {collectionIsEmpty && (
+                  <Flex align="center" justify="center" w={1}>
+                    <CollectionEmptyState />
+                  </Flex>
+                )}
+              </Box>
+            </Box>
+            <BulkActionBar showing={selected.length > 0}>
+              {/* NOTE: these padding and grid sizes must be carefully matched
+                   to the main content above to ensure the bulk checkbox lines up */}
+              <Box px={[2, 4]} py={1}>
+                <Grid>
+                  <GridItem w={collectionWidth} />
+                  <GridItem w={itemWidth} px={[1, 2]}>
+                    <Flex align="center" justify="center" px={2}>
+                      <SelectionControls {...this.props} />
+                      <BulkActionControls
+                        onArchive={
+                          _.all(selected, item => item.setArchived)
+                            ? this.handleBulkArchive
+                            : null
+                        }
+                        onMove={
+                          _.all(selected, item => item.setCollection)
+                            ? this.handleBulkMoveStart
+                            : null
+                        }
+                      />
+                      <Box ml="auto">
+                        {ngettext(
+                          msgid`${selected.length} item selected`,
+                          `${selected.length} items selected`,
+                          selected.length,
+                        )}
+                      </Box>
                     </Flex>
-                    <Card>
-                      {other.map(item => {
-                        const { url, iconName, iconColor } = this._getItemProps(
-                          item,
-                        );
-                        return (
-                          <Box>
-                            <Link to={url}>
-                              <EntityItem
-                                item={item}
-                                name={item.name}
-                                iconName={iconName}
-                                iconColor={iconColor}
-                                onPin={
-                                  collection.can_write
-                                    ? this._pinItem.bind(this)
-                                    : null
-                                }
-                              />
-                            </Link>
-                          </Box>
-                        );
-                      })}
-                    </Card>
-                  </Box>
-                );
-              }}
-            </CollectionItemsLoader>
+                  </GridItem>
+                </Grid>
+              </Box>
+            </BulkActionBar>
           </Box>
         </Box>
-      </Flex>
+        {!_.isEmpty(selectedItems) &&
+          selectedAction == "copy" && (
+            <Modal>
+              <CollectionCopyEntityModal
+                entityObject={selectedItems[0]}
+                onClose={() =>
+                  this.setState({ selectedItems: null, selectedAction: null })
+                }
+                onSaved={newEntityObject => {
+                  this.setState({ selectedItems: null, selectedAction: null });
+                  this.handleBulkActionSuccess();
+                }}
+              />
+            </Modal>
+          )}
+        {!_.isEmpty(selectedItems) &&
+          selectedAction == "move" && (
+            <Modal>
+              <CollectionMoveModal
+                title={
+                  selectedItems.length > 1
+                    ? t`Move ${selectedItems.length} items?`
+                    : t`Move "${selectedItems[0].getName()}"?`
+                }
+                onClose={() =>
+                  this.setState({ selectedItems: null, selectedAction: null })
+                }
+                onMove={this.handleBulkMove}
+              />
+            </Modal>
+          )}
+        <ItemsDragLayer selected={selected} />
+      </Box>
     );
   }
 }
 
-@connect(mapStateToProps)
+export const NormalItem = ({
+  item,
+  collection = {},
+  selection = new Set(),
+  onToggleSelected,
+  onMove,
+  onCopy,
+}) => (
+  <Link
+    to={item.getUrl()}
+    data-metabase-event={`${ANALYTICS_CONTEXT};Item Click;${item.model}`}
+  >
+    <EntityItem
+      analyticsContext={ANALYTICS_CONTEXT}
+      variant="list"
+      showSelect={selection.size > 0}
+      selectable
+      item={item}
+      type={entityTypeForObject(item)}
+      name={item.getName()}
+      iconName={item.getIcon()}
+      iconColor={item.getColor()}
+      isFavorite={item.favorite}
+      onFavorite={
+        item.setFavorited ? () => item.setFavorited(!item.favorite) : null
+      }
+      onPin={
+        collection.can_write && item.setPinned
+          ? () => item.setPinned(true)
+          : null
+      }
+      onMove={
+        collection.can_write && item.setCollection ? () => onMove([item]) : null
+      }
+      onCopy={item.copy ? () => onCopy([item]) : null}
+      onArchive={
+        collection.can_write && item.setArchived
+          ? () => item.setArchived(true)
+          : null
+      }
+      selected={selection.has(item)}
+      onToggleSelected={() => {
+        onToggleSelected(item);
+      }}
+    />
+  </Link>
+);
+
+const PinnedItem = ({ item, index, collection }) => (
+  <Link
+    to={item.getUrl()}
+    className="hover-parent hover--visibility"
+    hover={{ color: normal.blue }}
+    data-metabase-event={`${ANALYTICS_CONTEXT};Pinned Item;Click;${item.model}`}
+  >
+    <Card hoverable p={3}>
+      <Icon name={item.getIcon()} color={item.getColor()} size={28} mb={2} />
+      <Flex align="center">
+        <h3>{item.getName()}</h3>
+        {collection.can_write &&
+          item.setPinned && (
+            <Box
+              ml="auto"
+              className="hover-child"
+              data-metabase-event={`${ANALYTICS_CONTEXT};Pinned Item;Unpin;${
+                item.model
+              }`}
+              onClick={ev => {
+                ev.preventDefault();
+                item.setPinned(false);
+              }}
+            >
+              <Icon name="pin" />
+            </Box>
+          )}
+      </Flex>
+    </Card>
+  </Link>
+);
+
+const BulkActionControls = ({ onArchive, onMove }) => (
+  <Box ml={1}>
+    <Button
+      ml={1}
+      medium
+      disabled={!onArchive}
+      onClick={onArchive}
+      data-metabase-event={`${ANALYTICS_CONTEXT};Bulk Actions;Archive Items`}
+    >{t`Archive`}</Button>
+    <Button
+      ml={1}
+      medium
+      disabled={!onMove}
+      onClick={onMove}
+      data-metabase-event={`${ANALYTICS_CONTEXT};Bulk Actions;Move Items`}
+    >{t`Move`}</Button>
+  </Box>
+);
+
+const SelectionControls = ({
+  selected,
+  deselected,
+  onSelectAll,
+  onSelectNone,
+  size = 18,
+}) =>
+  deselected.length === 0 ? (
+    <StackedCheckBox checked onChange={onSelectNone} size={size} />
+  ) : selected.length === 0 ? (
+    <StackedCheckBox onChange={onSelectAll} size={size} />
+  ) : (
+    <StackedCheckBox checked indeterminate onChange={onSelectAll} size={size} />
+  );
+
+@entityObjectLoader({
+  entityType: "collections",
+  entityId: (state, props) => props.params.collectionId,
+  reload: true,
+})
 class CollectionLanding extends React.Component {
   render() {
-    const { params, currentCollection } = this.props;
-    const collectionId = params.collectionId;
+    const { object: currentCollection, params: { collectionId } } = this.props;
+    const isRoot = collectionId === "root";
+
+    const ancestors =
+      (currentCollection && currentCollection.effective_ancestors) || [];
 
     return (
-      <Box mx={4}>
-        <Box>
-          <Flex py={3} align="center">
-            <Subhead>
-              <Flex align="center">
-                {collectionId && (
-                  <Flex align="center">
-                    <Link
-                      to={`/collection/${collectionId}`}
-                      hover={{ color: normal.blue }}
-                    >
-                      {collectionId === "root"
-                        ? "Saved items"
-                        : currentCollection.name}
-                    </Link>
-                  </Flex>
-                )}
-              </Flex>
-            </Subhead>
-
-            <Flex ml="auto">
-              {currentCollection.can_write && (
-                <Box mx={1}>
-                  <EntityMenu
-                    items={[
-                      {
-                        title: t`New dashboard`,
-                        icon: "dashboard",
-                        link: Urls.newDashboard(collectionId),
-                      },
-                      {
-                        title: t`New pulse`,
-                        icon: "pulse",
-                        link: Urls.newPulse(collectionId),
-                      },
-                      {
-                        title: t`New collection`,
-                        icon: "all",
-                        link: Urls.newCollection(collectionId),
-                      },
-                    ]}
-                    triggerIcon="add"
-                  />
-                </Box>
-              )}
-              {currentCollection.can_write && (
-                <Box mx={1}>
-                  <EntityMenu
-                    items={[
-                      ...(collectionId
-                        ? [
-                            {
-                              title: t`Edit this collection`,
-                              icon: "editdocument",
-                              link: `/collections/${currentCollection.id}`,
-                            },
-                          ]
-                        : []),
-                      {
-                        title: t`Edit permissions`,
-                        icon: "lock",
-                        link: `/collections/permissions?collectionId=${
-                          currentCollection.id
-                        }`,
-                      },
-                      ...(collectionId
-                        ? [
-                            {
-                              title: t`Archive this collection`,
-                              icon: "viewArchive",
-                              link: `/collection/${collectionId}/archive`,
-                            },
-                          ]
-                        : []),
-                    ]}
-                    triggerIcon="pencil"
-                  />
-                </Box>
-              )}
-              <EntityMenu
-                items={[
-                  {
-                    title: t`View the archive`,
-                    icon: "viewArchive",
-                    link: `/archive`,
-                  },
-                ]}
-                triggerIcon="burger"
-              />
-            </Flex>
-          </Flex>
-        </Box>
-        <Box>
-          <DefaultLanding collectionId={collectionId} />
-          {
-            // Need to have this here so the child modals will show up
-            this.props.children
-          }
-        </Box>
+      <Box>
+        <DefaultLanding
+          isRoot={isRoot}
+          ancestors={ancestors}
+          collection={currentCollection}
+          collectionId={collectionId}
+        />
+        {
+          // Need to have this here so the child modals will show up
+          this.props.children
+        }
       </Box>
+    );
+  }
+}
+
+const CollectionSectionHeading = ({ children }) => (
+  <h5
+    className="text-uppercase"
+    style={{ color: colors["text-medium"], fontWeight: 900 }}
+  >
+    {children}
+  </h5>
+);
+
+const CollectionEditMenu = ({ isRoot, isAdmin, collectionId }) => {
+  const items = [];
+  if (!isRoot) {
+    items.push({
+      title: t`Edit this collection`,
+      icon: "editdocument",
+      link: `/collection/${collectionId}/edit`,
+      event: `${ANALYTICS_CONTEXT};Edit Menu;Edit Collection Click`,
+    });
+  }
+  if (!isRoot) {
+    items.push({
+      title: t`Archive this collection`,
+      icon: "viewArchive",
+      link: `/collection/${collectionId}/archive`,
+      event: `${ANALYTICS_CONTEXT};Edit Menu;Archive Collection`,
+    });
+  }
+  return items.length > 0 ? (
+    <EntityMenu items={items} triggerIcon="pencil" />
+  ) : null;
+};
+
+const CollectionBurgerMenu = () => (
+  <EntityMenu
+    items={[
+      {
+        title: t`View the archive`,
+        icon: "viewArchive",
+        link: `/archive`,
+        event: `${ANALYTICS_CONTEXT};Burger Menu;View Archive Click`,
+      },
+    ]}
+    triggerIcon="burger"
+  />
+);
+@withToast
+class CollectionCopyEntityModal extends React.Component {
+  render() {
+    const { entityObject, onClose, onSaved, triggerToast } = this.props;
+
+    return (
+      <EntityCopyModal
+        entityType={entityTypeForObject(entityObject)}
+        entityObject={entityObject}
+        copy={async values => {
+          return entityObject.copy(dissoc(values, "id"));
+        }}
+        onClose={onClose}
+        onSaved={newEntityObject => {
+          triggerToast(
+            <div className="flex align-center">
+              {t`Duplicated ${entityObject.model}`}
+              <Link
+                className="link text-bold ml1"
+                to={Urls.modelToUrl(entityObject.model, newEntityObject.id)}
+              >
+                {t`See it`}
+              </Link>
+            </div>,
+            { icon: entityObject.model },
+          );
+
+          onSaved(newEntityObject);
+        }}
+      />
     );
   }
 }

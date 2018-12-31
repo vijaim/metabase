@@ -8,7 +8,6 @@
             [metabase
              [config :as config]
              [db :as mdb]
-             [driver :as driver]
              [events :as events]
              [metabot :as metabot]
              [middleware :as mb-middleware]
@@ -19,11 +18,12 @@
              [task :as task]
              [util :as u]]
             [metabase.core.initialization-status :as init-status]
+            [metabase.driver.util :as driver.u]
             [metabase.models
              [setting :as setting]
              [user :refer [User]]]
-            [metabase.util.i18n :refer [set-locale]]
-            [puppetlabs.i18n.core :refer [locale-negotiator trs]]
+            [metabase.util.i18n :refer [set-locale trs]]
+            [puppetlabs.i18n.core :refer [locale-negotiator]]
             [ring.adapter.jetty :as ring-jetty]
             [ring.middleware
              [cookies :refer [wrap-cookies]]
@@ -86,7 +86,9 @@
 
 (def ^:private app
   "The primary entry point to the Ring HTTP server."
+  ;; ▼▼▼ POST-PROCESSING ▼▼▼ happens from TOP-TO-BOTTOM
   (-> #'routes/routes                    ; the #' is to allow tests to redefine endpoints
+      mb-middleware/catch-api-exceptions ; catch exceptions and return them in our expected format
       (mb-middleware/log-api-call
        jetty-stats)
       mb-middleware/add-security-headers ; Add HTTP headers to API responses to prevent them from being cached
@@ -103,7 +105,9 @@
       locale-negotiator                  ; Binds *locale* for i18n
       wrap-cookies                       ; Parses cookies in the request map and assocs as :cookies
       wrap-session                       ; reads in current HTTP session and sets :session/key
+      mb-middleware/add-content-type     ; Adds a Content-Type header for any response that doesn't already have one
       wrap-gzip))                        ; GZIP response if client can handle it
+;; ▲▲▲ PRE-PROCESSING ▲▲▲ happens from BOTTOM-TO-TOP
 
 
 ;;; --------------------------------------------------- Lifecycle ----------------------------------------------------
@@ -131,6 +135,7 @@
   (task/stop-scheduler!)
   (log/info (trs "Metabase Shutdown COMPLETE")))
 
+
 (defn init!
   "General application initialization function which should be run once at application startup."
   []
@@ -147,7 +152,7 @@
   (init-status/set-progress! 0.3)
 
   ;; Load up all of our Database drivers, which are used for app db work
-  (driver/find-and-load-drivers!)
+  (driver.u/find-and-load-all-drivers!)
   (init-status/set-progress! 0.4)
 
   ;; startup database.  validates connection & runs any necessary migrations

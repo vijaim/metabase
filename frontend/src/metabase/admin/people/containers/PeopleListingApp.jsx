@@ -160,10 +160,7 @@ export default class PeopleListingApp extends Component {
       });
     } else {
       // generate a password
-      const password = MetabaseUtils.generatePassword(
-        14,
-        MetabaseSettings.get("password_complexity"),
-      );
+      const password = MetabaseUtils.generatePassword();
 
       // trigger the reset
       this.props.resetPasswordManually(user, password);
@@ -207,8 +204,6 @@ export default class PeopleListingApp extends Component {
 
     return (
       <Modal
-        full
-        form
         title={t`Edit ${user.first_name}'s details`}
         onClose={this.onCloseModal}
       >
@@ -222,7 +217,6 @@ export default class PeopleListingApp extends Component {
 
     return (
       <Modal
-        small
         title={t`${user.first_name} has been added`}
         footer={[
           <Button
@@ -230,9 +224,10 @@ export default class PeopleListingApp extends Component {
           >{t`Add another person`}</Button>,
           <Button primary onClick={this.onCloseModal}>{t`Done`}</Button>,
         ]}
+        formModal
         onClose={this.onCloseModal}
       >
-        <div className="px4 pb4">
+        <div>
           <div className="pb4">{jt`We couldn’t send them an email invitation,
                     so make sure to tell them to log in using ${(
                       <span className="text-bold">{user.email}</span>
@@ -269,12 +264,11 @@ export default class PeopleListingApp extends Component {
         ]}
         onClose={this.onCloseModal}
       >
-        <div
-          style={{ paddingLeft: "5em", paddingRight: "5em" }}
-          className="pb4"
-        >{jt`We’ve sent an invite to ${(
-          <span className="text-bold">{user.email}</span>
-        )} with instructions to set their password.`}</div>
+        <div className="pb4">
+          {jt`We’ve sent an invite to ${(
+            <span className="text-bold">{user.email}</span>
+          )} with instructions to set their password.`}
+        </div>
       </Modal>
     );
   }
@@ -312,9 +306,7 @@ export default class PeopleListingApp extends Component {
         ]}
         onClose={this.onCloseModal}
       >
-        <div className="px4 pb4">
-          {t`${user.first_name} won't be able to log in anymore.`}
-        </div>
+        {t`${user.first_name} won't be able to log in anymore.`}
       </Modal>
     );
   }
@@ -335,9 +327,7 @@ export default class PeopleListingApp extends Component {
         ]}
         onClose={this.onCloseModal}
       >
-        <div className="px4 pb4">
-          {t`They'll be able to log in again, and they'll be placed back into the groups they were in before their account was deactivated.`}
-        </div>
+        {t`They'll be able to log in again, and they'll be placed back into the groups they were in before their account was deactivated.`}
       </Modal>
     );
   }
@@ -358,7 +348,7 @@ export default class PeopleListingApp extends Component {
         ]}
         onClose={this.onCloseModal}
       >
-        <div className="px4 pb4">{t`Are you sure you want to do this?`}</div>
+        {t`Are you sure you want to do this?`}
       </Modal>
     );
   }
@@ -372,17 +362,15 @@ export default class PeopleListingApp extends Component {
         title={t`${user.first_name}'s password has been reset`}
         footer={
           <button
-            className="Button Button--primary mr2"
+            className="Button Button--primary"
             onClick={this.onCloseModal}
           >{t`Done`}</button>
         }
         onClose={this.onCloseModal}
       >
-        <div className="px4 pb4">
-          <span className="pb3 block">{t`Here’s a temporary password they can use to log in and then change their password.`}</span>
+        <span className="pb3 block">{t`Here’s a temporary password they can use to log in and then change their password.`}</span>
 
-          <PasswordReveal password={password} />
-        </div>
+        <PasswordReveal password={password} />
       </Modal>
     );
   }
@@ -397,7 +385,7 @@ export default class PeopleListingApp extends Component {
         footer={<Button primary onClick={this.onCloseModal}>{t`Done`}</Button>}
         onClose={this.onCloseModal}
       >
-        <div className="px4 pb4">{t`We've sent them an email with instructions for creating a new password.`}</div>
+        {t`We've sent them an email with instructions for creating a new password.`}
       </Modal>
     );
   }
@@ -447,15 +435,19 @@ export default class PeopleListingApp extends Component {
     let title = t`People`;
     if (deactivated.length > 0) {
       title = (
-        <Radio
-          className="h6"
-          value={!!showDeactivated}
-          options={[
-            { name: t`Active`, value: false },
-            { name: t`Deactivated`, value: true },
-          ]}
-          onChange={showDeactivated => this.setState({ showDeactivated })}
-        />
+        <div className="mb2">
+          <Radio
+            className="h6"
+            value={!!showDeactivated}
+            options={[
+              { name: t`Active`, value: false },
+              { name: t`Deactivated`, value: true },
+            ]}
+            underlined
+            py={1}
+            onChange={showDeactivated => this.setState({ showDeactivated })}
+          />
+        </div>
       );
     }
 
@@ -526,7 +518,7 @@ export default class PeopleListingApp extends Component {
                               <Tooltip tooltip={t`Reactivate this account`}>
                                 <Icon
                                   name="refresh"
-                                  className="text-grey-1 text-brand-hover cursor-pointer"
+                                  className="text-light text-brand-hover cursor-pointer"
                                   size={20}
                                   onClick={() =>
                                     this.props.showModal({

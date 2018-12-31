@@ -5,12 +5,31 @@
             [medley.core :as m]
             [metabase.util :as u]
             [metabase.util.password :as password]
-            [puppetlabs.i18n.core :refer [tru]]
-            [schema.core :as s]))
+            [metabase.util.i18n :refer [tru]]
+            [schema.core :as s]
+            [schema.macros :as s.macros]
+            [schema.utils :as s.utils]))
 
 ;; always validate all schemas in s/defn function declarations. See
 ;; https://github.com/plumatic/schema#schemas-in-practice for details.
 (s/set-fn-validation! true)
+
+;; swap out the default impl of `schema.core/validator` with one that does not barf out the entire schema, since it's
+;; way too huge with things like our MBQL query schema
+(defn- schema-core-validator [schema]
+  (let [c (s/checker schema)]
+    (fn [value]
+      (when-let [error (c value)]
+        (s.macros/error! (s.utils/format* "Value does not match schema: %s" (pr-str error))
+                         {:value value, :error error}))
+      value)))
+
+(intern 'schema.core 'validator schema-core-validator)
+
+
+;;; +----------------------------------------------------------------------------------------------------------------+
+;;; |                                     API Schema Validation & Error Messages                                     |
+;;; +----------------------------------------------------------------------------------------------------------------+
 
 (defn with-api-error-message
   "Return SCHEMA with an additional API-ERROR-MESSAGE that will be used to explain the error if a parameter fails
@@ -50,6 +69,13 @@
     (instance? java.util.regex.Pattern existing-schema) (tru "value must be a string that matches the regex `{0}`."
                                                              existing-schema)))
 
+(declare api-error-message)
+
+(defn- create-cond-schema-message [child-schemas]
+  (str (tru "value must satisfy one of the following requirements: ")
+       (str/join " " (for [[i child-schema] (m/indexed child-schemas)]
+                       (format "%d) %s" (inc i) (api-error-message child-schema))))))
+
 (defn api-error-message
   "Extract the API error messages attached to a schema, if any.
    This functionality is fairly sophisticated:
@@ -74,13 +100,16 @@
       ;; 1) value must be a boolean.
       ;; 2) value must be a valid boolean string ('true' or 'false').
       (when (instance? schema.core.CondPre schema)
-        (str (tru "value must satisfy one of the following requirements: ")
-             (str/join " " (for [[i child-schema] (m/indexed (:schemas schema))]
-                             (format "%d) %s" (inc i) (api-error-message child-schema))))))
+        (create-cond-schema-message (:schemas schema)))
+
+      ;; For conditional schemas we'll generate a string similar to `cond-pre` above
+      (when (instance? schema.core.ConditionalSchema schema)
+        (create-cond-schema-message (map second (:preds-and-schemas schema))))
+
       ;; do the same for sequences of a schema
       (when (vector? schema)
         (str (tru "value must be an array.") (when (= (count schema) 1)
-                                               (when-let [message (:api-error-message (first schema))]
+                                               (when-let [message (api-error-message (first schema))]
                                                  (str " " (tru "Each {0}" message))))))))
 
 
@@ -101,12 +130,30 @@
   (with-api-error-message (s/constrained s/Str (complement str/blank?) "Non-blank string")
     (tru "value must be a non-blank string.")))
 
+(def IntGreaterThanOrEqualToZero
+  "Schema representing an integer than must also be greater than or equal to zero."
+  (with-api-error-message
+      (s/constrained s/Int (partial <= 0) (tru "Integer greater than or equal to zero"))
+    (tru "value must be an integer greater than or equal to zero.")))
+
 ;; TODO - rename this to `PositiveInt`?
 (def IntGreaterThanZero
   "Schema representing an integer than must also be greater than zero."
   (with-api-error-message
       (s/constrained s/Int (partial < 0) (tru "Integer greater than zero"))
     (tru "value must be an integer greater than zero.")))
+
+(def NonNegativeInt
+  "Schema representing an integer 0 or greater"
+  (with-api-error-message
+      (s/constrained s/Int (partial <= 0) (tru "Integer greater than or equal to zero"))
+    (tru "value must be an integer zero or greater.")))
+
+(def PositiveNum
+  "Schema representing a numeric value greater than zero. This allows floating point numbers and integers."
+  (with-api-error-message
+      (s/constrained s/Num (partial < 0) (tru "Number greater than zero"))
+    (tru "value must be a number greater than zero.")))
 
 (def KeywordOrString
   "Schema for something that can be either a `Keyword` or a `String`."
@@ -155,6 +202,12 @@
    Something that adheres to this schema is guaranteed to to work with `Integer/parseInt`."
   (with-api-error-message (s/constrained s/Str #(u/ignore-exceptions (< 0 (Integer/parseInt %))))
     (tru "value must be a valid integer greater than zero.")))
+
+(def IntStringGreaterThanOrEqualToZero
+  "Schema for a string that can be parsed as an integer, and is greater than or equal to zero.
+   Something that adheres to this schema is guaranteed to to work with `Integer/parseInt`."
+  (with-api-error-message (s/constrained s/Str #(u/ignore-exceptions (<= 0 (Integer/parseInt %))))
+    (tru "value must be a valid integer greater than or equal to zero.")))
 
 (defn- boolean-string? ^Boolean [s]
   (boolean (when (string? s)

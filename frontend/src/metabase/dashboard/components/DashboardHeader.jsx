@@ -3,20 +3,21 @@
 import React, { Component } from "react";
 import PropTypes from "prop-types";
 import { t } from "c-3po";
-import ActionButton from "metabase/components/ActionButton.jsx";
-import AddToDashSelectQuestionModal from "./AddToDashSelectQuestionModal.jsx";
-import ArchiveDashboardModal from "./ArchiveDashboardModal.jsx";
-import Header from "metabase/components/Header.jsx";
-import Icon from "metabase/components/Icon.jsx";
-import ModalWithTrigger from "metabase/components/ModalWithTrigger.jsx";
-import Tooltip from "metabase/components/Tooltip.jsx";
+import ActionButton from "metabase/components/ActionButton";
+import AddToDashSelectQuestionModal from "./AddToDashSelectQuestionModal";
+import ArchiveDashboardModal from "./ArchiveDashboardModal";
+import Header from "metabase/components/Header";
+import Icon from "metabase/components/Icon";
+import ModalWithTrigger from "metabase/components/ModalWithTrigger";
+import Tooltip from "metabase/components/Tooltip";
 import DashboardEmbedWidget from "../containers/DashboardEmbedWidget";
 
 import { getDashboardActions } from "./DashboardActions";
 
-import ParametersPopover from "./ParametersPopover.jsx";
-import Popover from "metabase/components/Popover.jsx";
+import ParametersPopover from "./ParametersPopover";
+import Popover from "metabase/components/Popover";
 
+import * as Urls from "metabase/lib/urls";
 import MetabaseSettings from "metabase/lib/settings";
 
 import cx from "classnames";
@@ -144,8 +145,10 @@ export default class DashboardHeader extends Component {
   }
 
   async onArchive() {
-    await this.props.archiveDashboard(this.props.dashboard.id);
-    this.props.onChangeLocation("/dashboards");
+    const { dashboard } = this.props;
+    // TODO - this should use entity action
+    await this.props.archiveDashboard(dashboard.id);
+    this.props.onChangeLocation(Urls.collection(dashboard.collection_id));
   }
 
   getEditingButtons() {
@@ -193,7 +196,7 @@ export default class DashboardHeader extends Component {
       location,
     } = this.props;
     const isEmpty = !dashboard || dashboard.ordered_cards.length === 0;
-    const canEdit = isEditable && !!dashboard;
+    const canEdit = dashboard.can_write && isEditable && !!dashboard;
 
     const isPublicLinksEnabled = MetabaseSettings.get("public_sharing");
     const isEmbeddingEnabled = MetabaseSettings.get("embedding");
@@ -207,8 +210,7 @@ export default class DashboardHeader extends Component {
     if (!isFullscreen && canEdit) {
       buttons.push(
         <ModalWithTrigger
-          full
-          key="add"
+          key="add-a-question"
           ref="addQuestionModal"
           triggerElement={
             <Tooltip tooltip={t`Add a question`}>
@@ -242,7 +244,7 @@ export default class DashboardHeader extends Component {
     if (isEditing) {
       // Parameters
       buttons.push(
-        <span>
+        <span key="add-a-filter">
           <Tooltip tooltip={t`Add a filter`}>
             <a
               key="parameters"
@@ -270,7 +272,7 @@ export default class DashboardHeader extends Component {
 
       // Add text card button
       buttons.push(
-        <Tooltip tooltip={t`Add a text box`}>
+        <Tooltip key="add-a-text-box" tooltip={t`Add a text box`}>
           <a
             data-metabase-event="Dashboard;Add Text Box"
             key="add-text"
@@ -284,7 +286,7 @@ export default class DashboardHeader extends Component {
       );
 
       buttons.push(
-        <Tooltip tooltip={t`Revision history`}>
+        <Tooltip key="revision-history" tooltip={t`Revision history`}>
           <Link
             to={location.pathname + "/history"}
             data-metabase-event={"Dashboard;Revisions"}
@@ -295,20 +297,9 @@ export default class DashboardHeader extends Component {
       );
     }
 
-    buttons.push(
-      <Tooltip tooltip={t`Move dashboard`}>
-        <Link
-          to={location.pathname + "/move"}
-          data-metabase-event={"Dashboard;Move"}
-        >
-          <Icon className="text-brand-hover" name="move" size={18} />
-        </Link>
-      </Tooltip>,
-    );
-
     if (!isFullscreen && !isEditing && canEdit) {
       buttons.push(
-        <Tooltip tooltip={t`Edit dashboard`}>
+        <Tooltip key="edit-dashboard" tooltip={t`Edit dashboard`}>
           <a
             data-metabase-event="Dashboard;Edit"
             key="edit"
@@ -322,12 +313,39 @@ export default class DashboardHeader extends Component {
       );
     }
 
+    if (!isFullscreen && !isEditing) {
+      if (canEdit) {
+        buttons.push(
+          <Tooltip key="new-dashboard" tooltip={t`Move dashboard`}>
+            <Link
+              to={location.pathname + "/move"}
+              data-metabase-event={"Dashboard;Move"}
+            >
+              <Icon className="text-brand-hover" name="move" size={18} />
+            </Link>
+          </Tooltip>,
+        );
+      }
+      buttons.push(
+        <Tooltip key="copy-dashboard" tooltip={t`Duplicate dashboard`}>
+          <Link
+            to={location.pathname + "/copy"}
+            data-metabase-event={"Dashboard;Copy"}
+          >
+            <Icon className="text-brand-hover" name="clone" size={18} />
+          </Link>
+        </Tooltip>,
+      );
+    }
+
     if (
       !isFullscreen &&
       ((isPublicLinksEnabled && (isAdmin || dashboard.public_uuid)) ||
         (isEmbeddingEnabled && isAdmin))
     ) {
-      buttons.push(<DashboardEmbedWidget dashboard={dashboard} />);
+      buttons.push(
+        <DashboardEmbedWidget key="dashboard-embed" dashboard={dashboard} />,
+      );
     }
 
     buttons.push(...getDashboardActions(this.props));
@@ -342,8 +360,10 @@ export default class DashboardHeader extends Component {
       <Header
         headerClassName="wrapper"
         objectType="dashboard"
+        analyticsContext="Dashboard"
         item={dashboard}
         isEditing={this.props.isEditing}
+        showBadge={!this.props.isEditing && !this.props.isFullscreen}
         isEditingInfo={this.props.isEditing}
         headerButtons={this.getHeaderButtons()}
         editingTitle={t`You are editing a dashboard`}

@@ -4,8 +4,9 @@ import PropTypes from "prop-types";
 import { connect } from "react-redux";
 import styled from "styled-components";
 import { space } from "styled-system";
-import { Flex } from "rebass";
+import { Flex } from "grid-styled";
 import { t } from "c-3po";
+import { capitalize, inflect } from "metabase/lib/formatting";
 
 import { normal } from "metabase/lib/colors";
 import { dismissUndo, performUndo } from "metabase/redux/undo";
@@ -26,8 +27,21 @@ const mapDispatchToProps = {
 };
 
 const UndoList = styled.ul`
-  ${space}, z-index: 99;
+  ${space};
 `;
+
+const DefaultMessage = ({
+  undo: { verb = t`modified`, count = 1, subject = t`item` },
+}) => (
+  <div>
+    {count > 1 // TODO: figure out how to i18n this?
+      ? `${capitalize(verb)} ${count} ${inflect(subject, count)}`
+      : `${capitalize(verb)} ${subject}`}
+  </div>
+);
+DefaultMessage.propTypes = {
+  undo: PropTypes.object.isRequired,
+};
 
 @connect(mapStateToProps, mapDispatchToProps)
 @BodyComponent
@@ -41,17 +55,31 @@ export default class UndoListing extends Component {
   render() {
     const { undos, performUndo, dismissUndo } = this.props;
     return (
-      <UndoList m={2} className="fixed left bottom">
+      <UndoList m={2} className="fixed left bottom zF">
         {undos.map(undo => (
-          <Card key={undo._domId} dark p={2}>
+          <Card key={undo._domId} dark p={2} mt={1}>
             <Flex align="center">
-              {typeof undo.message === "function"
-                ? undo.message(undo)
-                : undo.message}
-
-              {undo.actions && (
-                <Link onClick={() => performUndo(undo.id)}>{t`Undo`}</Link>
+              <Icon
+                name={(undo.icon && undo.icon) || "check"}
+                color="white"
+                mr={1}
+              />
+              {typeof undo.message === "function" ? (
+                undo.message(undo)
+              ) : undo.message ? (
+                undo.message
+              ) : (
+                <DefaultMessage undo={undo || {}} />
               )}
+
+              {undo.actions &&
+                undo.actions.length > 0 && (
+                  <Link
+                    ml={1}
+                    onClick={() => performUndo(undo.id)}
+                    className="link text-bold"
+                  >{t`Undo`}</Link>
+                )}
               <Icon
                 ml={1}
                 color={normal.grey1}

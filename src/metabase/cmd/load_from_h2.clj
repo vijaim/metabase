@@ -28,8 +28,6 @@
              [card-favorite :refer [CardFavorite]]
              [collection :refer [Collection]]
              [collection-revision :refer [CollectionRevision]]
-             [computation-job :refer [ComputationJob]]
-             [computation-job-result :refer [ComputationJobResult]]
              [dashboard :refer [Dashboard]]
              [dashboard-card :refer [DashboardCard]]
              [dashboard-card-series :refer [DashboardCardSeries]]
@@ -54,6 +52,7 @@
              [session :refer [Session]]
              [setting :refer [Setting]]
              [table :refer [Table]]
+             [task-history :refer [TaskHistory]]
              [user :refer [User]]
              [view-log :refer [ViewLog]]]))
 
@@ -95,8 +94,7 @@
    CollectionRevision
    DashboardFavorite
    Dimension
-   ComputationJob
-   ComputationJobResult
+   TaskHistory
    ;; migrate the list of finished DataMigrations as the very last thing (all models to copy over should be listed
    ;; above this line)
    DataMigrations])

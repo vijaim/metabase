@@ -13,11 +13,10 @@ import MetabaseSettings from "metabase/lib/settings";
 
 import App from "metabase/App.jsx";
 
-import { withBackground } from "metabase/hoc/Background";
-
 import HomepageApp from "metabase/home/containers/HomepageApp";
 
 // auth containers
+import AuthApp from "metabase/auth/AuthApp";
 import ForgotPasswordApp from "metabase/auth/containers/ForgotPasswordApp.jsx";
 import LoginApp from "metabase/auth/containers/LoginApp.jsx";
 import LogoutApp from "metabase/auth/containers/LogoutApp.jsx";
@@ -37,13 +36,13 @@ import {
 
 import QueryBuilder from "metabase/query_builder/containers/QueryBuilder.jsx";
 
-import CollectionEdit from "metabase/questions/containers/CollectionEdit.jsx";
-import CollectionCreate from "metabase/questions/containers/CollectionCreate.jsx";
-import CollectionPermissions from "metabase/admin/permissions/containers/CollectionsPermissionsApp.jsx";
+import CollectionEdit from "metabase/collections/containers/CollectionEdit.jsx";
+import CollectionCreate from "metabase/collections/containers/CollectionCreate.jsx";
 import ArchiveCollectionModal from "metabase/components/ArchiveCollectionModal";
+import CollectionPermissionsModal from "metabase/admin/permissions/containers/CollectionPermissionsModal";
+import UserCollectionList from "metabase/containers/UserCollectionList";
 
 import PulseEditApp from "metabase/pulse/containers/PulseEditApp.jsx";
-import PulseListApp from "metabase/pulse/containers/PulseListApp.jsx";
 import PulseMoveModal from "metabase/pulse/components/PulseMoveModal";
 import SetupApp from "metabase/setup/containers/SetupApp.jsx";
 import PostSetupApp from "metabase/setup/containers/PostSetupApp.jsx";
@@ -56,8 +55,8 @@ import {
 } from "metabase/new_query/router_wrappers";
 
 import CreateDashboardModal from "metabase/components/CreateDashboardModal";
-import NotFound from "metabase/components/NotFound.jsx";
-import Unauthorized from "metabase/components/Unauthorized.jsx";
+
+import { NotFound, Unauthorized } from "metabase/containers/ErrorPages";
 
 // Reference Guide
 import GettingStartedGuideContainer from "metabase/reference/guide/GettingStartedGuideContainer.jsx";
@@ -88,6 +87,7 @@ import PublicQuestion from "metabase/public/containers/PublicQuestion.jsx";
 import PublicDashboard from "metabase/public/containers/PublicDashboard.jsx";
 import { DashboardHistoryModal } from "metabase/dashboard/components/DashboardHistoryModal";
 import DashboardMoveModal from "metabase/dashboard/components/DashboardMoveModal";
+import DashboardCopyModal from "metabase/dashboard/components/DashboardCopyModal";
 import { ModalRoute } from "metabase/hoc/ModalRoute";
 
 import CollectionLanding from "metabase/components/CollectionLanding";
@@ -142,9 +142,10 @@ const UserIsNotAuthenticated = UserAuthWrapper({
 const IsAuthenticated = MetabaseIsSetup(
   UserIsAuthenticated(({ children }) => children),
 );
-const IsAdmin = withBackground("bg-white")(
-  MetabaseIsSetup(UserIsAuthenticated(UserIsAdmin(({ children }) => children))),
+const IsAdmin = MetabaseIsSetup(
+  UserIsAuthenticated(UserIsAdmin(({ children }) => children)),
 );
+
 const IsNotAuthenticated = MetabaseIsSetup(
   UserIsNotAuthenticated(({ children }) => children),
 );
@@ -176,7 +177,7 @@ export const getRoutes = store => (
       }}
     >
       {/* AUTH */}
-      <Route path="/auth">
+      <Route path="/auth" component={AuthApp}>
         <IndexRedirect to="/auth/login" />
         <Route component={IsNotAuthenticated}>
           <Route path="login" title={t`Login`} component={LoginApp} />
@@ -198,10 +199,16 @@ export const getRoutes = store => (
         <Route path="search" title={t`Search`} component={SearchApp} />
         <Route path="archive" title={t`Archive`} component={ArchiveApp} />
 
+        <Route path="collection/users" component={IsAdmin}>
+          <IndexRoute component={UserCollectionList} />
+        </Route>
+
         <Route path="collection/:collectionId" component={CollectionLanding}>
+          <ModalRoute path="edit" modal={CollectionEdit} />
           <ModalRoute path="archive" modal={ArchiveCollectionModal} />
           <ModalRoute path="new_collection" modal={CollectionCreate} />
           <ModalRoute path="new_dashboard" modal={CreateDashboardModal} />
+          <ModalRoute path="permissions" modal={CollectionPermissionsModal} />
         </Route>
 
         <Route path="activity" component={HomepageApp} />
@@ -213,6 +220,7 @@ export const getRoutes = store => (
         >
           <ModalRoute path="history" modal={DashboardHistoryModal} />
           <ModalRoute path="move" modal={DashboardMoveModal} />
+          <ModalRoute path="copy" modal={DashboardCopyModal} />
         </Route>
 
         <Route path="/question">
@@ -245,13 +253,11 @@ export const getRoutes = store => (
 
       <Route path="/collections">
         <Route path="create" component={CollectionCreate} />
-        <Route path="permissions" component={CollectionPermissions} />
-        <Route path=":collectionId" component={CollectionEdit} />
       </Route>
 
       {/* REFERENCE */}
       <Route path="/reference" title={`Data Reference`}>
-        <IndexRedirect to="/reference/guide" />
+        <IndexRedirect to="/reference/databases" />
         <Route
           path="guide"
           title={`Getting Started`}
@@ -314,7 +320,8 @@ export const getRoutes = store => (
 
       {/* PULSE */}
       <Route path="/pulse" title={t`Pulses`}>
-        <IndexRoute component={PulseListApp} />
+        {/* NOTE: legacy route, not linked to in app */}
+        <IndexRedirect to="/search" query={{ type: "pulse" }} />
         <Route path="create" component={PulseEditApp} />
         <Route path=":pulseId">
           <IndexRoute component={PulseEditApp} />
@@ -358,6 +365,10 @@ export const getRoutes = store => (
       }
     />
     <Redirect from="/dash/:dashboardId" to="/dashboard/:dashboardId" />
+    <Redirect
+      from="/collections/permissions"
+      to="/admin/permissions/collections"
+    />
 
     {/* MISC */}
     <Route path="/unauthorized" component={Unauthorized} />

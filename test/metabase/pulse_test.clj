@@ -1,16 +1,17 @@
 (ns metabase.pulse-test
-  (:require [clojure.string :as str]
-            [clojure.walk :as walk]
+  (:require [clojure
+             [string :as str]
+             [walk :as walk]]
             [expectations :refer :all]
             [medley.core :as m]
-            [metabase.integrations.slack :as slack]
             [metabase
              [email-test :as et]
              [pulse :refer :all]
              [query-processor :as qp]]
+            [metabase.integrations.slack :as slack]
             [metabase.models
              [card :refer [Card]]
-             [pulse :refer [Pulse retrieve-pulse retrieve-notification]]
+             [pulse :refer [Pulse retrieve-notification retrieve-pulse]]
              [pulse-card :refer [PulseCard]]
              [pulse-channel :refer [PulseChannel]]
              [pulse-channel-recipient :refer [PulseChannelRecipient]]]
@@ -32,7 +33,7 @@
   {:name          card-name
    :dataset_query {:database (data/id)
                    :type     :query
-                   :query    (merge {:source_table (data/id :checkins)
+                   :query    (merge {:source-table (data/id :checkins)
                                      :aggregation  [["count"]]}
                                     query-map)}})
 
@@ -67,10 +68,10 @@
      (pulse-test-fixture (fn [] ~@body))))
 
 (def ^:private png-attachment
-  {:type :inline,
-   :content-id true,
-   :content-type "image/png",
-   :content java.net.URL})
+  {:type         :inline
+   :content-id   true
+   :content-type "image/png"
+   :content      java.net.URL})
 
 (defn- rasta-pulse-email [& [email]]
   (et/email-to :rasta (merge {:subject "Pulse: Pulse Name",
@@ -642,7 +643,7 @@
   {:name          card-name
    :dataset_query {:database (data/id)
                    :type     :query
-                   :query    {:source_table (data/id :venues)
+                   :query    {:source-table (data/id :venues)
                               :aggregation  [[aggregation-op (data/id :venues :price)]]}}})
 
 ;; Above goal alert with a progress bar
@@ -762,6 +763,53 @@
     (email-test-setup
      (send-pulse! (retrieve-notification pulse-id))
      (et/summarize-multipart-email test-card-regex))))
+
+;; With a "rows" type of pulse (table visualization) we should include the CSV by default
+(expect
+  (-> (rasta-pulse-email)
+      ;; There's no PNG with a table visualization, remove it from the expected results
+      (update-in ["rasta@metabase.com" 0 :body] (comp vector first))
+      (add-rasta-attachment csv-attachment))
+
+  (tt/with-temp* [Card                 [{card-id :id}    {:name          card-name
+                                                          :dataset_query {:database (data/id)
+                                                                          :type     :query
+                                                                          :query    {:source-table (data/id :checkins)}}}]
+                  Pulse                [{pulse-id :id} {:name          "Pulse Name"
+                                                        :skip_if_empty false}]
+                  PulseCard             [_             {:pulse_id    pulse-id
+                                                        :card_id     card-id
+                                                        :position    0}]
+                  PulseChannel          [{pc-id :id}   {:pulse_id pulse-id}]
+                  PulseChannelRecipient [_             {:user_id          (rasta-id)
+                                                        :pulse_channel_id pc-id}]]
+    (email-test-setup
+     (send-pulse! (retrieve-pulse pulse-id))
+     (et/summarize-multipart-email #"Pulse Name"))))
+
+;; If the pulse is already configured to send an XLS, no need to include a CSV
+(expect
+  (-> (rasta-pulse-email)
+      ;; There's no PNG with a table visualization, remove it from the expected results
+      (update-in ["rasta@metabase.com" 0 :body] (comp vector first))
+      (add-rasta-attachment xls-attachment))
+
+  (tt/with-temp* [Card                 [{card-id :id}    {:name          card-name
+                                                          :dataset_query {:database (data/id)
+                                                                          :type     :query
+                                                                          :query    {:source-table (data/id :checkins)}}}]
+                  Pulse                [{pulse-id :id} {:name          "Pulse Name"
+                                                        :skip_if_empty false}]
+                  PulseCard             [_             {:pulse_id    pulse-id
+                                                        :card_id     card-id
+                                                        :position    0
+                                                        :include_xls true}]
+                  PulseChannel          [{pc-id :id}   {:pulse_id pulse-id}]
+                  PulseChannelRecipient [_             {:user_id          (rasta-id)
+                                                        :pulse_channel_id pc-id}]]
+    (email-test-setup
+     (send-pulse! (retrieve-pulse pulse-id))
+     (et/summarize-multipart-email #"Pulse Name"))))
 
 ;; Basic test of card with CSV and XLS attachments, but no data. Should not include an attachment
 (expect

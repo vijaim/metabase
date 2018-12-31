@@ -55,7 +55,8 @@
 (def ^:private pulse-defaults
   {:collection_id       nil
    :collection_position nil
-   :skip_if_empty       false})
+   :skip_if_empty       false
+   :archived            false})
 
 ;; retrieve-pulse
 ;; this should cover all the basic Pulse attributes
@@ -65,11 +66,12 @@
    {:creator_id (user->id :rasta)
     :creator    (user-details :rasta)
     :name       "Lodi Dodi"
-    :cards      [{:name        "Test Card"
-                  :description nil
-                  :display     :table
-                  :include_csv false
-                  :include_xls false}]
+    :cards      [{:name          "Test Card"
+                  :description   nil
+                  :collection_id nil
+                  :display       :table
+                  :include_csv   false
+                  :include_xls   false}]
     :channels   [(merge pulse-channel-defaults
                         {:schedule_type :daily
                          :schedule_hour 15
@@ -145,11 +147,12 @@
                          :schedule_hour 18
                          :channel_type  :email
                          :recipients    [{:email "foo@bar.com"}]})]
-    :cards      [{:name        "Test Card"
-                  :description nil
-                  :display     :table
-                  :include_csv false
-                  :include_xls false}]})
+    :cards      [{:name          "Test Card"
+                  :description   nil
+                  :collection_id nil
+                  :display       :table
+                  :include_csv   false
+                  :include_xls   false}]})
   (tt/with-temp Card [card {:name "Test Card"}]
     (tu/with-model-cleanup [Pulse]
       (create-pulse-then-select! "Booyah!"
@@ -173,16 +176,18 @@
    pulse-defaults
    {:creator_id (user->id :rasta)
     :name       "We like to party"
-    :cards      [{:name        "Bar Card"
-                  :description nil
-                  :display     :bar
-                  :include_csv false
-                  :include_xls false}
-                 {:name        "Test Card"
-                  :description nil
-                  :display     :table
-                  :include_csv false
-                  :include_xls false}]
+    :cards      [{:name          "Bar Card"
+                  :description   nil
+                  :collection_id nil
+                  :display       :bar
+                  :include_csv   false
+                  :include_xls   false}
+                 {:name          "Test Card"
+                  :description   nil
+                  :collection_id nil
+                  :display       :table
+                  :include_csv   false
+                  :include_xls   false}]
     :channels   [(merge pulse-channel-defaults
                         {:schedule_type :daily
                          :schedule_hour 18
@@ -218,22 +223,23 @@
 ;;; +----------------------------------------------------------------------------------------------------------------+
 
 (defn do-with-pulse-in-collection [f]
-  (tt/with-temp* [Collection [collection]
-                  Pulse      [pulse  {:collection_id (u/get-id collection)}]
-                  Database   [db    {:engine :h2}]
-                  Table      [table {:db_id (u/get-id db)}]
-                  Card       [card  {:dataset_query {:database (u/get-id db)
-                                                     :type     :query
-                                                     :query    {:source-table (u/get-id table)}}}]
-                  PulseCard  [_ {:pulse_id (u/get-id pulse), :card_id (u/get-id card)}]]
-    (f db collection pulse)))
+  (tu/with-non-admin-groups-no-root-collection-perms
+    (tt/with-temp* [Collection [collection]
+                    Pulse      [pulse  {:collection_id (u/get-id collection)}]
+                    Database   [db    {:engine :h2}]
+                    Table      [table {:db_id (u/get-id db)}]
+                    Card       [card  {:dataset_query {:database (u/get-id db)
+                                                       :type     :query
+                                                       :query    {:source-table (u/get-id table)}}}]
+                    PulseCard  [_ {:pulse_id (u/get-id pulse), :card_id (u/get-id card)}]]
+      (f db collection pulse card))))
 
 (defmacro with-pulse-in-collection
   "Execute `body` with a temporary Pulse, in a Colleciton, containing a single Card."
   {:style/indent 1}
-  [[db-binding collection-binding pulse-binding] & body]
+  [[db-binding collection-binding pulse-binding card-binding] & body]
   `(do-with-pulse-in-collection
-    (fn [~db-binding ~collection-binding ~pulse-binding]
+    (fn [~(or db-binding '_) ~(or collection-binding '_) ~(or pulse-binding '_) ~(or card-binding '_)]
       ~@body)))
 
 ;; Check that if a Pulse is in a Collection, someone who would not be able to see it under the old

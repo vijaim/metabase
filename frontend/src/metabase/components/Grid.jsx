@@ -1,8 +1,8 @@
 import React from "react";
 import { Box, Flex } from "grid-styled";
 
-export const GridItem = ({ children, w, px, py }) => (
-  <Box w={w} px={px} py={py}>
+export const GridItem = ({ children, w, px, py, ...props }) => (
+  <Box w={w} px={px} py={py} {...props}>
     {children}
   </Box>
 );
@@ -14,7 +14,7 @@ GridItem.defaultProps = {
 };
 
 export const Grid = ({ children }) => (
-  <Flex wrap mx={-1}>
+  <Flex mx={-1} style={{ flexWrap: "wrap" }}>
     {children}
   </Flex>
 );
